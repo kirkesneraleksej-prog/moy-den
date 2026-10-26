@@ -524,18 +524,8 @@ function historyCard(cur){
 
 /* --- питание --- */
 function rFood(){
-  const date = V.food, m = getMeals(date), g = S.settings.goals;
-  const all = totals(m.items), eaten = totals(m.items, true);
-  const pct = Math.min(1, all.k/g.k), C = 2*Math.PI*48;
-  const over = all.k > g.k*1.05;
-  let html = datebar('food') + `<div class="card"><div class="row" style="gap:16px;align-items:center">
-    <div class="ring"><svg width="110" height="110"><circle cx="55" cy="55" r="48" fill="none" stroke="var(--soft)" stroke-width="10"/>
-      <circle cx="55" cy="55" r="48" fill="none" stroke="${over?'var(--danger)':'var(--food)'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}"/></svg>
-      <div class="c"><div><b>${r0(all.k)}</b><div class="muted small">из ${g.k} ккал</div></div></div></div>
-    <div class="grow">${[['Б','b','белки'],['Ж','j','жиры'],['У','u','углеводы']].map(([l,k])=>`<div class="macro"><b>${l}</b>
-      <div class="bar ${all[k]>g[k]*1.1?'over':''}"><i style="width:${Math.min(100,all[k]/g[k]*100)}%"></i></div><span>${r0(all[k])}/${g[k]}</span></div>`).join('')}
-      <div class="muted small">${m.items.length ? `Съедено: ${r0(eaten.k)} ккал · осталось ${Math.max(0,r0(g.k-all.k))}` : 'План на день пуст'}</div></div>
-  </div></div>`;
+  const date = V.food, m = getMeals(date);
+  let html = datebar('food');
   const prev = Object.keys(S.meals).filter(k=>k<date && S.meals[k].items.length).sort().pop();
   if (!m.items.length && prev) html += `<button class="btn" style="width:100%;margin-bottom:12px" data-act="fcopy" data-d="${prev}">↺ Меню как ${prev===addDays(date,-1)?'вчера':fmt(prev)} (${S.meals[prev].items.length} поз.)</button>`;
   MEALS.forEach(([code, title, em]) => {
