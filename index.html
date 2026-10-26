@@ -207,16 +207,6 @@ nav a.on .e{filter:none;opacity:1}
 'use strict';
 /* ---------- данные ---------- */
 const KEY = 'moy-den.v1';
-const FOODS = [
-  ['Куриная грудка (варёная)',137,29.8,1.8,0.5,150],['Рис варёный',116,2.2,0.5,24.9,150],['Гречка варёная',110,4.2,1.1,21.3,150],
-  ['Овсянка на воде',88,3,1.7,15,200],['Макароны варёные',112,3.6,0.4,23,150],['Картофель отварной',82,2,0.4,16.7,200],
-  ['Яйцо куриное',157,12.7,11.5,0.7,55],['Творог 5%',121,17.2,5,1.8,200],['Молоко 2,5%',52,2.8,2.5,4.7,250],
-  ['Кефир 1%',40,3,1,4,250],['Йогурт греческий',66,8,2,4,150],['Сыр',350,25,27,0,30],['Говядина отварная',254,25.8,16.8,0,150],
-  ['Лосось',208,20,13,0,150],['Тунец консервированный',96,21,1,0,100],['Хлеб цельнозерновой',247,13,3.4,41,40],
-  ['Банан',96,1.5,0.2,21.8,120],['Яблоко',47,0.4,0.4,9.8,150],['Огурец',15,0.8,0.1,2.8,100],['Помидор',20,1.1,0.2,3.7,100],
-  ['Авокадо',160,2,14.7,8.5,100],['Орехи грецкие',654,15,65,7,30],['Арахисовая паста',588,25,50,20,20],
-  ['Протеин (порция)',380,75,6,8,30],['Пельмени',275,12,13,29,250],['Шоколад молочный',535,7.6,30,59,25],['Мёд',304,0.3,0,82,15]
-];
 const GROUPS = ['Руки','Пресс','Грудь','Спина','Ноги','Плечи','Ягодицы','Кардио'];
 // картинки лежат в img/gr/<файл>.jpg и img/ex/<файл>.jpg; если файла нет — показывается эмодзи
 const GROUP_IMG = {'Руки':['ruki','💪'],'Пресс':['press','🔥'],'Грудь':['grud','🛡️'],'Спина':['spina','🦅'],'Ноги':['nogi','🦵'],'Плечи':['plechi','🏔️'],'Ягодицы':['yagodicy','🍑'],'Кардио':['kardio','🏃']};
@@ -250,13 +240,18 @@ const MEALS = [['b','Завтрак','🍳'],['l','Обед','🍲'],['d','Уж�
 const MOODS = ['😩','😕','😐','🙂','🤩'];
 
 function fresh(){
-  const foodLib = {};
-  FOODS.forEach(([n,k,b,j,u,g]) => foodLib[n.toLowerCase()] = {name:n,k,b,j,u,g,count:0});
-  return {days:{}, taskLib:{}, workouts:{}, exLib:{}, meals:{}, foodLib,
-    settings:{name:'', goals:{k:2500,b:150,j:80,u:280}, water:8, rest:90, autoRest:true}};
+  return {days:{}, taskLib:{}, workouts:{}, exLib:{}, meals:{}, foodLib:{},
+    settings:{name:'', waterL:2, glass:250, rest:90, autoRest:true}};
 }
 function load(){
-  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d) return Object.assign(fresh(), d); } catch(e){}
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d) {
+    const base = fresh(), st = Object.assign(base.settings, d.settings||{});
+    delete st.water; delete st.goals;
+    Object.values(d.days||{}).forEach(x => { if (x.waterMl == null) x.waterMl = (x.water||0)*250; delete x.water; });
+    const lib = {}; Object.entries(d.foodLib||{}).forEach(([k,v]) => { if (v.count>0) lib[k] = {name:v.name, count:v.count}; });
+    Object.values(d.meals||{}).forEach(m => m.items.forEach(i => { if (i.g && i.g!==100 && !/ г$/.test(i.name)) i.name = `${i.name} ${i.g} г`; delete i.k; delete i.b; delete i.j; delete i.u; delete i.g; }));
+    return Object.assign(base, d, {settings:st, foodLib:lib});
+  } } catch(e){}
   return fresh();
 }
 let S = load();
@@ -287,7 +282,7 @@ const V = {day:today(), train:today(), food:today(), newGroups:[], newEquip:'', 
 /* ---------- день ---------- */
 function getDay(date, create){
   if (S.days[date]) return S.days[date];
-  const d = {tasks:[], water:0, mood:null};
+  const d = {tasks:[], waterMl:0, mood:null};
   if (date >= today()) {
     Object.values(S.taskLib).filter(x=>x.daily).forEach(x => d.tasks.push({id:uid(), text:x.text, time:x.time||'', done:false}));
     d.tasks = sortedTasks(d.tasks);
@@ -337,11 +332,9 @@ function getMeals(date, create){
   if (!S.meals[date] && create) S.meals[date] = {items:[]};
   return S.meals[date] || {items:[]};
 }
-function itemK(it){ const f = it.g/100; return {k:it.k*f, b:it.b*f, j:it.j*f, u:it.u*f}; }
-function totals(items, onlyDone){
-  return items.filter(i=>!onlyDone||i.done).reduce((a,i)=>{ const x=itemK(i); a.k+=x.k;a.b+=x.b;a.j+=x.j;a.u+=x.u; return a; }, {k:0,b:0,j:0,u:0});
-}
 
+/* ---------- вода ---------- */
+const fmtL = ml => String(+(ml/1000).toFixed(2)).replace('.',',');
 /* ---------- рендер ---------- */
 const TITLES = {home:'Мой день', day:'План дня', train:'Тренировка', food:'Питание', stat:'Статистика', cal:'Календарь', set:'Настройки'};
 const SEC = {home:'sec-day', day:'sec-day', train:'sec-train', food:'sec-food', stat:'sec-stat', cal:'sec-stat', set:'sec-set'};
@@ -386,9 +379,9 @@ function rHome(){
   const day = getDay(t), done = day.tasks.filter(x=>x.done).length, tot = day.tasks.length;
   const next = day.tasks.find(x=>!x.done);
   const w = S.workouts[t], wTom = S.workouts[addDays(t,1)];
-  const meals = getMeals(t), kc = totals(meals.items).k, goal = S.settings.goals.k;
+  const meals = getMeals(t), mn = meals.items.length, me = meals.items.filter(i=>i.done).length;
   const streak = calcStreak();
-  const wq = day.water||0;
+  const wq = day.waterMl||0;
   return `
   <div class="hello"><div class="muted">${fmt(t)}</div><h2>${greet}${S.settings.name ? ', '+esc(S.settings.name) : ''}!</h2></div>
   ${next ? `<div class="focus"><div class="small">Фокус сейчас${next.time ? ' · '+next.time : ''}</div><b>${esc(next.text)}</b></div>`
@@ -400,20 +393,21 @@ function rHome(){
     <button class="tile sec-train" data-go="train"><span class="ic">🏋️</span><b>Тренировка</b>
       <span class="v">${w ? (w.done ? '✅ ' : '') + esc(w.title||'Сегодня') : wTom ? 'Завтра: '+esc(wTom.title) : 'Не запланирована'}</span></button>
     <button class="tile sec-food" data-go="food"><span class="ic">🥗</span><b>Питание</b>
-      <span class="v">${r0(kc)} / ${goal} ккал</span>
-      <div class="bar ${kc>goal*1.05?'over':''}"><i style="width:${Math.min(100,kc/goal*100)}%"></i></div></button>
+      <span class="v">${mn ? `Съедено ${me} из ${mn}` : 'Ничего не записано'}</span>
+      <div class="bar"><i style="width:${mn?me/mn*100:0}%"></i></div></button>
     <button class="tile sec-stat" data-go="stat"><span class="ic">📈</span><b>Статистика</b>
       <span class="v">${streak ? `Серия: ${streak} ${plural(streak,'день','дня','дней')}` : 'Закрой все задачи дня — начнётся серия'}</span></button>
   </div>
   <button class="card row sec-stat" style="width:100%;text-align:left" data-go="cal"><span class="tile" style="all:unset"><span class="ic" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:21px;background:var(--s)">📅</span></span>
     <span class="grow"><b>Календарь</b><br><span class="muted small">Что делал в любой день: задачи, веса, еда</span></span><span class="muted">›</span></button>
-  <div class="card"><h3>💧 Вода <span class="muted small" style="margin-left:auto">${wq} из ${S.settings.water} стаканов</span></h3>${waterRow(t)}</div>`;
+  <div class="card"><h3>💧 Вода <span class="muted small" style="margin-left:auto">${fmtL(wq)} из ${fmtL(S.settings.waterL*1000)} л</span></h3>${waterRow(t)}</div>`;
 }
 function waterRow(date){
-  const n = getDay(date).water||0, g = S.settings.water;
+  const ml = getDay(date).waterMl||0, gl = S.settings.glass, goal = S.settings.waterL*1000;
+  const n = Math.max(Math.ceil(goal/gl), Math.ceil(ml/gl)), have = Math.floor(ml/gl + 0.001);
   let s = '<div class="water">';
-  for (let i=1;i<=Math.max(g,n);i++) s += `<button class="${i<=n?'on':''}" data-act="water" data-d="${date}" data-i="${i}" aria-label="Стакан ${i}">🥛</button>`;
-  return s + '</div>';
+  for (let i=1;i<=n;i++) s += `<button class="${i<=have?'on':''}" data-act="water" data-d="${date}" data-i="${i}" aria-label="${fmtL(i*gl)} л">🥛</button>`;
+  return s + `</div><div class="muted small" style="margin-top:6px">1 стакан = ${gl} мл</div>`;
 }
 
 /* --- план дня --- */
@@ -539,35 +533,33 @@ function historyCard(cur){
 
 /* --- питание --- */
 function rFood(){
-  const date = V.food, m = getMeals(date);
+  const date = V.food, m = getMeals(date), n = m.items.length, eaten = m.items.filter(i=>i.done).length;
   let html = datebar('food');
   const prev = Object.keys(S.meals).filter(k=>k<date && S.meals[k].items.length).sort().pop();
-  if (!m.items.length && prev) html += `<button class="btn" style="width:100%;margin-bottom:12px" data-act="fcopy" data-d="${prev}">↺ Меню как ${prev===addDays(date,-1)?'вчера':fmt(prev)} (${S.meals[prev].items.length} поз.)</button>`;
+  if (!n && prev) html += `<button class="btn" style="width:100%;margin-bottom:12px" data-act="fcopy" data-d="${prev}">↺ Меню как ${prev===addDays(date,-1)?'вчера':fmt(prev)} (${S.meals[prev].items.length} поз.)</button>`;
+  if (n) html += `<div class="card"><div class="row"><b class="grow">Съедено ${eaten} из ${n}</b></div><div class="bar" style="margin-top:8px"><i style="width:${eaten/n*100}%"></i></div></div>`;
   MEALS.forEach(([code, title, em]) => {
-    const items = m.items.filter(i=>i.meal===code), t = totals(items);
-    html += `<div class="card"><div class="mealhead"><b>${em} ${title}</b><span class="muted small">${items.length?r0(t.k)+' ккал':''}</span></div>
+    const items = m.items.filter(i=>i.meal===code);
+    html += `<div class="card"><div class="mealhead"><b>${em} ${title}</b></div>
       ${items.map(i=>`<div class="food ${i.done?'done':''}">
         <button class="check ${i.done?'on':''}" data-act="fdone" data-id="${i.id}" title="Съел">${i.done?'✓':''}</button>
-        <span class="t grow">${esc(i.name)}<br><span class="muted small">${i.g} г · Б${r0(itemK(i).b)} Ж${r0(itemK(i).j)} У${r0(itemK(i).u)}</span></span>
-        <b class="small">${r0(itemK(i).k)}</b><button class="del" data-act="fdel" data-id="${i.id}">✕</button></div>`).join('')}
-      ${V.foodMeal===code ? foodForm(code) : `<button class="link" style="margin-top:6px" data-act="fopen" data-m="${code}">+ добавить</button>`}
+        <span class="t grow" style="${i.done?'text-decoration:line-through':''}">${esc(i.name)}</span>
+        <button class="del" data-act="fdel" data-id="${i.id}">✕</button></div>`).join('')}
+      ${V.foodMeal===code ? foodForm(code, items) : `<button class="link" style="margin-top:6px" data-act="fopen" data-m="${code}">+ добавить</button>`}
     </div>`;
   });
-  html += `<div class="card"><h3>💧 Вода <span class="muted small" style="margin-left:auto">${getDay(date).water||0} из ${S.settings.water}</span></h3>${waterRow(date)}</div>`;
+  html += `<div class="card"><h3>💧 Вода <span class="muted small" style="margin-left:auto">${fmtL(getDay(date).waterMl||0)} из ${fmtL(S.settings.waterL*1000)} л</span></h3>${waterRow(date)}</div>`;
   return html;
 }
-function foodForm(code){
+function foodForm(code, items){
+  const have = new Set(items.map(i=>i.name.toLowerCase()));
   const lib = Object.values(S.foodLib).sort((a,b)=>b.count-a.count || a.name.localeCompare(b.name));
-  const top = lib.filter(x=>x.count>0).slice(0,8);
+  const top = lib.filter(x=>!have.has(x.name.toLowerCase())).slice(0,10);
   return `<form data-form="food" data-m="${code}" style="margin-top:8px;border-top:1px solid var(--line);padding-top:10px">
-    ${top.length?`<div class="chips" style="margin-bottom:8px">${top.map(x=>`<button type="button" class="chip" data-act="fquick" data-k="${esc(x.name.toLowerCase())}" data-m="${code}">${esc(x.name)}</button>`).join('')}</div>`:''}
-    <div class="row"><input class="grow" id="foodIn" name="name" list="foodList" placeholder="Продукт или блюдо" autocomplete="off" data-field="fname">
-      <input name="g" inputmode="decimal" placeholder="г" style="width:70px;flex:none" value="100"></div>
+    <input id="foodIn" name="name" list="foodList" placeholder="Что съешь? Например: гречка с курицей" autocomplete="off" enterkeyhint="done">
     <datalist id="foodList">${lib.map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist>
-    <div class="grid4"><div><label>Ккал/100г</label><input name="k" inputmode="decimal"></div><div><label>Б</label><input name="b" inputmode="decimal"></div>
-      <div><label>Ж</label><input name="j" inputmode="decimal"></div><div><label>У</label><input name="u" inputmode="decimal"></div></div>
-    <div class="muted small" style="margin-top:6px">Выбери из списка — КБЖУ подставятся сами. Новый продукт запомнится.</div>
-    <div class="row" style="margin-top:10px"><button class="btn grow">Добавить</button><button type="button" class="btn ghost" data-act="fclose">Отмена</button></div>
+    ${top.length?`<div class="lab">Часто ешь</div><div class="chips">${top.map(x=>`<button type="button" class="chip" data-act="fquick" data-k="${esc(x.name.toLowerCase())}" data-m="${code}">${esc(x.name)}</button>`).join('')}</div>`:''}
+    <div class="row" style="margin-top:10px"><button class="btn grow">Добавить</button><button type="button" class="btn ghost" data-act="fclose">Готово</button></div>
   </form>`;
 }
 
@@ -591,10 +583,10 @@ function rStat(){
   html += progressCards();
   const dd = d => { const x = S.days[d]; return x && x.tasks.length ? x.tasks.filter(y=>y.done).length/x.tasks.length : 0; };
   html += `<div class="card sec-day"><h3>Задачи за неделю, % выполнения</h3><div class="bars">${days.map(d=>`<div><i style="height:${dd(d)*100}%"></i><span>${WD[new Date(d+'T12:00').getDay()]}</span></div>`).join('')}</div></div>`;
-  const kc = days.map(d=>totals(getMeals(d).items).k), mx = Math.max(S.settings.goals.k*1.2, ...kc);
-  html += `<div class="card sec-food"><h3>Калории за неделю <span class="muted small" style="margin-left:auto">цель ${S.settings.goals.k}</span></h3>
-    <div class="bars" style="position:relative"><div style="position:absolute;left:0;right:0;bottom:calc(${S.settings.goals.k/mx*100}% * (110 - 19) / 110 + 19px);border-top:1.5px dashed var(--muted);height:0;opacity:.5"></div>
-    ${days.map((d,i)=>`<div><i style="height:${kc[i]/mx*100}%;${kc[i]>S.settings.goals.k*1.05?'background:var(--danger)':''}"></i><span>${WD[new Date(d+'T12:00').getDay()]}</span></div>`).join('')}</div></div>`;
+  const wl = days.map(d=>(getDay(d).waterMl||0)), wmx = Math.max(S.settings.waterL*1000*1.2, ...wl);
+  html += `<div class="card sec-stat"><h3>💧 Вода за неделю, л <span class="muted small" style="margin-left:auto">цель ${fmtL(S.settings.waterL*1000)}</span></h3>
+    <div class="bars">${days.map((d,i)=>`<div><i style="height:${wl[i]/wmx*100}%"></i><span>${wl[i]?fmtL(wl[i]):'·'}</span></div>`).join('')}</div>
+    <div class="muted small" style="margin-top:6px;display:flex;justify-content:space-between">${days.map(d=>`<span>${WD[new Date(d+'T12:00').getDay()]}</span>`).join('')}</div></div>`;
   const moods = [...Array(14)].map((_,i)=>addDays(t,i-13)).map(d=>S.days[d]&&S.days[d].mood!=null ? MOODS[S.days[d].mood] : '·');
   html += `<div class="card"><h3>Настроение, 2 недели</h3><div style="display:flex;justify-content:space-between;font-size:20px">${moods.map(m=>`<span class="${m==='·'?'muted':''}">${m}</span>`).join('')}</div></div>`;
   // прогресс в упражнении
@@ -643,11 +635,11 @@ function daySummary(date){
   const day = S.days[date], w = S.workouts[date], m = S.meals[date];
   let h = `<h2 style="margin:16px 2px 10px;font-size:20px">${rel(date)}${rel(date)!==fmt(date)?` <span class="muted small">${fmt(date)}</span>`:''}</h2>`;
   if (!day && !w && !(m&&m.items.length)) return h + `<div class="card empty"><div class="big">🌙</div>В этот день ничего не записано</div>`;
-  if (day && (day.tasks.length || day.mood!=null || day.water)) {
+  if (day && (day.tasks.length || day.mood!=null || day.waterMl)) {
     const done = day.tasks.filter(x=>x.done).length;
     h += `<div class="card sec-day"><h3>📝 Задачи <span class="muted small" style="margin-left:auto">${done}/${day.tasks.length} ${day.mood!=null?MOODS[day.mood]:''}</span></h3>
       ${day.tasks.map(x=>`<div class="task ${x.done?'done':''}"><span>${x.done?'✅':'⬜️'}</span>${x.time?`<span class="time">${x.time}</span>`:''}<span class="t">${esc(x.text)}</span></div>`).join('')}
-      ${day.water?`<div class="muted small" style="margin-top:6px">💧 Вода: ${day.water} стак.</div>`:''}
+      ${day.waterMl?`<div class="muted small" style="margin-top:6px">💧 Вода: ${fmtL(day.waterMl)} л</div>`:''}
       <button class="link" style="margin-top:8px" data-act="calopen" data-s="day" data-d="${date}">Открыть день ›</button></div>`;
   }
   if (w) {
@@ -658,9 +650,8 @@ function daySummary(date){
       <button class="link" style="margin-top:8px" data-act="calopen" data-s="train" data-d="${date}">Открыть тренировку ›</button></div>`;
   }
   if (m && m.items.length) {
-    const t = totals(m.items);
-    h += `<div class="card sec-food"><h3>🥗 Питание <span class="muted small" style="margin-left:auto">${r0(t.k)} ккал · Б${r0(t.b)} Ж${r0(t.j)} У${r0(t.u)}</span></h3>
-      ${MEALS.map(([c,title,em])=>{ const it = m.items.filter(i=>i.meal===c); return it.length ? `<div class="small" style="margin:6px 0"><b>${em} ${title}:</b> ${it.map(i=>esc(i.name)+' '+i.g+'г').join(', ')}</div>` : ''; }).join('')}
+    h += `<div class="card sec-food"><h3>🥗 Питание <span class="muted small" style="margin-left:auto">${m.items.filter(i=>i.done).length} из ${m.items.length} съедено</span></h3>
+      ${MEALS.map(([c,title,em])=>{ const it = m.items.filter(i=>i.meal===c); return it.length ? `<div class="small" style="margin:6px 0"><b>${em} ${title}:</b> ${it.map(i=>(i.done?'✅ ':'')+esc(i.name)).join(', ')}</div>` : ''; }).join('')}
       <button class="link" style="margin-top:8px" data-act="calopen" data-s="food" data-d="${date}">Открыть питание ›</button></div>`;
   }
   return h;
@@ -704,11 +695,12 @@ function progressCards(){
 
 /* --- настройки --- */
 function rSet(){
-  const s = S.settings, g = s.goals;
+  const s = S.settings;
   return `<div class="card"><h3>👤 Профиль</h3><label class="lab">Как тебя называть</label><input data-field="name" value="${esc(s.name)}" placeholder="Имя"></div>
-  <div class="card sec-food"><h3>🎯 Цели питания на день</h3><div class="grid4">
-    ${[['k','Ккал'],['b','Белки'],['j','Жиры'],['u','Углев.']].map(([k,l])=>`<div><label>${l}</label><input inputmode="numeric" data-field="goal" data-k="${k}" value="${g[k]}"></div>`).join('')}</div>
-    <label class="lab">Вода, стаканов в день</label><input inputmode="numeric" data-field="waterGoal" value="${s.water}"></div>
+  <div class="card sec-stat"><h3>💧 Вода</h3>
+    <label class="lab">Норма в день, литров</label><input inputmode="decimal" data-field="waterGoal" value="${fmtL(s.waterL*1000)}">
+    <label class="lab">Один стакан</label>
+    <div class="chips">${[200,250,330,500].map(x=>`<button class="chip ${s.glass===x?'on':''}" data-act="glass" data-v="${x}">${x} мл</button>`).join('')}</div></div>
   <div class="card sec-train"><h3>⏱ Отдых между подходами</h3>
     <div class="chips">${[60,90,120,180].map(x=>`<button class="chip ${s.rest===x?'on':''}" data-act="rest" data-v="${x}">${x} сек</button>`).join('')}</div>
     <label class="row" style="margin-top:12px"><input type="checkbox" data-field="autoRest" ${s.autoRest?'checked':''}> Запускать таймер, когда отмечаю подход</label></div>
@@ -749,8 +741,10 @@ const findFood = id => getMeals(V.food).items.find(i=>i.id===id);
 
 const ACT = {
   date(el){ const k = el.dataset.k, n = +el.dataset.n; V[k] = n===0 ? today() : addDays(V[k], n); V.newGroups=[]; V.foodMeal=null; },
-  water(el){ const d = getDay(el.dataset.d, true), i = +el.dataset.i; d.water = d.water===i ? i-1 : i;
-    if (d.water === S.settings.water) toast('Норма воды выполнена 💧'); },
+  water(el){ const d = getDay(el.dataset.d, true), i = +el.dataset.i, gl = S.settings.glass, have = Math.floor((d.waterMl||0)/gl + 0.001);
+    d.waterMl = have===i ? (i-1)*gl : i*gl;
+    if (d.waterMl >= S.settings.waterL*1000 && have < i) toast('Норма воды выполнена 💧'); },
+  glass(el){ S.settings.glass = +el.dataset.v; },
   tdone(el){ const t = findTask(el.dataset.id); t.done = !t.done;
     const day = getDay(V.day); if (t.done && day.tasks.every(x=>x.done)) toast('Все задачи выполнены! 🎉'); },
   tdel(el){ const d = getDay(V.day); d.tasks = d.tasks.filter(x=>x.id!==el.dataset.id); },
@@ -798,7 +792,7 @@ const ACT = {
 
   fopen(el){ V.foodMeal = el.dataset.m; V.focus = '#foodIn'; },
   fclose(){ V.foodMeal = null; },
-  fquick(el){ const x = S.foodLib[el.dataset.k]; addFood(el.dataset.m, x.name, x.g||100, x); },
+  fquick(el){ addFood(el.dataset.m, S.foodLib[el.dataset.k].name); V.focus = '#foodIn'; },
   fdone(el){ const i = findFood(el.dataset.id); i.done = !i.done; },
   fdel(el){ const m = getMeals(V.food); m.items = m.items.filter(i=>i.id!==el.dataset.id); },
   fcopy(el){ getMeals(V.food, true).items = S.meals[el.dataset.d].items.map(i=>({...i, id:uid(), done:false})); },
@@ -812,10 +806,9 @@ const ACT = {
     a.href = URL.createObjectURL(b); a.download = `moy-den-${today()}.json`; a.click(); return false; },
   reset(){ if (confirm('Точно стереть всё? Это нельзя отменить.')) { S = fresh(); toast('Данные стёрты'); } },
 };
-function addFood(meal, name, g, per){
-  getMeals(V.food, true).items.push({id:uid(), meal, name, g:num(g)||100, k:num(per.k), b:num(per.b), j:num(per.j), u:num(per.u), done:false});
-  const k = name.toLowerCase(), e = S.foodLib[k] || {name, count:0};
-  Object.assign(e, {k:num(per.k), b:num(per.b), j:num(per.j), u:num(per.u), g:num(g)||100}); e.count++; S.foodLib[k] = e;
+function addFood(meal, name){
+  getMeals(V.food, true).items.push({id:uid(), meal, name, done:false});
+  const k = name.toLowerCase(), e = S.foodLib[k] || {name, count:0}; e.count++; S.foodLib[k] = e;
 }
 
 document.addEventListener('click', e => {
@@ -853,7 +846,7 @@ document.addEventListener('submit', e => {
   }
   if (f.dataset.form === 'food') {
     const name = fd.name.trim(); if (!name) return;
-    addFood(f.dataset.m, name, fd.g, fd); V.focus = '#foodIn';
+    addFood(f.dataset.m, name); V.focus = '#foodIn';
   }
   save(); render();
 });
@@ -863,10 +856,7 @@ document.addEventListener('input', e => {
   if (f==='sw' || f==='sr') { findEx(el.dataset.id).sets[+el.dataset.i][f==='sw'?'w':'r'] = el.value.trim().replace(',','.'); save(); }
   else if (f==='wtitle') { curW().title = el.value; save(); }
   else if (f==='name') { S.settings.name = el.value.trim(); save(); }
-  else if (f==='goal') { S.settings.goals[el.dataset.k] = num(el.value) || 1; save(); }
-  else if (f==='waterGoal') { S.settings.water = Math.max(1, Math.min(20, num(el.value)||8)); save(); }
-  else if (f==='fname') { const x = S.foodLib[el.value.trim().toLowerCase()]; if (x) { const fm = el.form;
-      ['k','b','j','u'].forEach(k=>fm.elements[k].value = x[k]); fm.elements.g.value = x.g||100; } }
+  else if (f==='waterGoal') { S.settings.waterL = Math.max(0.5, Math.min(10, num(el.value)||2)); save(); }
 });
 document.addEventListener('change', e => {
   const el = e.target, f = el.dataset.field;
