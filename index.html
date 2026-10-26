@@ -103,6 +103,11 @@ input[type=checkbox]{width:auto}
 .moods button{font-size:28px;padding:6px;border-radius:12px;opacity:.35;transition:.15s}
 .moods button.on{opacity:1;background:var(--soft);transform:scale(1.1)}
 
+/* перетаскивание и правка */
+.task{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
+.dragging .task{transition:transform .15s}
+.dragging .task.drag{transition:none;position:relative;z-index:6;background:var(--card);box-shadow:0 8px 24px rgba(0,0,0,.22);border-radius:12px;padding-left:8px;padding-right:8px}
+.dragging{touch-action:none}
 /* workout */
 .ex{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
 .ex .name{font-weight:700}
@@ -277,7 +282,7 @@ function toast(msg){ const o = $('#overlay'); clearTimeout(toastT);
   toastT = setTimeout(()=>t.remove(), 2200); }
 
 /* ---------- состояние экрана ---------- */
-const V = {day:today(), train:today(), food:today(), newGroups:[], newEquip:'', foodMeal:null, editLib:false, statEx:'', focus:null, cal:today().slice(0,7), calDay:today()};
+const V = {day:today(), train:today(), food:today(), newGroups:[], newEquip:'', foodMeal:null, editLib:false, statEx:'', focus:null, edit:null, cal:today().slice(0,7), calDay:today()};
 
 /* ---------- день ---------- */
 function getDay(date, create){
@@ -285,6 +290,7 @@ function getDay(date, create){
   const d = {tasks:[], water:0, mood:null};
   if (date >= today()) {
     Object.values(S.taskLib).filter(x=>x.daily).forEach(x => d.tasks.push({id:uid(), text:x.text, time:x.time||'', done:false}));
+    d.tasks = sortedTasks(d.tasks);
   }
   if (create || d.tasks.length) { S.days[date] = d; save(); }
   return d;
@@ -351,6 +357,15 @@ function render(){
     .map(([k,e,t]) => `<a href="#${k}" class="${k===s?'on':''}"><span class="e">${e}</span>${t}</a>`).join('');
   $('#app').innerHTML = ({home:rHome, day:rDay, train:rTrain, food:rFood, stat:rStat, cal:rCal, set:rSet})[s]();
   renderTimer();
+  const ed = s==='day' && V.edit && getDay(V.day).tasks.find(x=>x.id===V.edit);
+  $('#overlay').innerHTML = ed ? `<div class="sheet-bg" data-act="tclose"><form class="sheet" data-form="tedit" data-id="${ed.id}">
+      <h3 style="margin:0 0 12px;font-size:18px">Изменить задачу</h3>
+      <div class="lab">Что сделать</div><input id="editText" name="text" value="${esc(ed.text)}" autocomplete="off">
+      <div class="lab">Во сколько (необязательно)</div><input name="time" type="time" value="${esc(ed.time||'')}">
+      <div class="row" style="margin-top:16px"><button class="btn grow">Сохранить</button>
+        <button type="button" class="btn ghost" data-act="tclose">Отмена</button></div>
+      <button type="button" class="link" style="color:var(--danger);margin-top:14px" data-act="tdel2" data-id="${ed.id}">Удалить задачу</button>
+    </form></div>` : '';
   if (V.focus) { const el = $(V.focus); if (el) el.focus(); V.focus = null; }
 }
 
@@ -369,7 +384,7 @@ function rHome(){
   const t = today(), h = new Date().getHours();
   const greet = h<5 ? 'Доброй ночи' : h<12 ? 'Доброе утро' : h<18 ? 'Добрый день' : 'Добрый вечер';
   const day = getDay(t), done = day.tasks.filter(x=>x.done).length, tot = day.tasks.length;
-  const next = sortedTasks(day.tasks).find(x=>!x.done);
+  const next = day.tasks.find(x=>!x.done);
   const w = S.workouts[t], wTom = S.workouts[addDays(t,1)];
   const meals = getMeals(t), kc = totals(meals.items).k, goal = S.settings.goals.k;
   const streak = calcStreak();
@@ -403,7 +418,7 @@ function waterRow(date){
 
 /* --- план дня --- */
 function rDay(){
-  const date = V.day, day = getDay(date), tasks = sortedTasks(day.tasks);
+  const date = V.day, day = getDay(date), tasks = day.tasks;
   const done = tasks.filter(x=>x.done).length;
   const have = new Set(day.tasks.map(x=>x.text.toLowerCase()));
   const prev = prevDayWithTasks(date);
@@ -432,14 +447,14 @@ function rDay(){
     <h3>Задачи <span class="muted small" style="margin-left:auto">${done}/${tasks.length}</span></h3>
     ${tasks.length ? `<div class="bar" style="margin-bottom:6px"><i style="width:${done/tasks.length*100}%"></i></div>` + tasks.map(x => {
       const lib = S.taskLib[x.text.toLowerCase()];
-      return `<div class="task ${x.done?'done':''}">
+      return `<div class="task ${x.done?'done':''}" data-tid="${x.id}" data-act="tedit" data-id="${x.id}">
         <button class="check ${x.done?'on':''}" data-act="tdone" data-id="${x.id}">${x.done?'✓':''}</button>
         ${x.time ? `<span class="time">${x.time}</span>` : ''}
         <span class="t">${esc(x.text)}</span>
         <button class="rep ${lib&&lib.daily?'on':''}" data-act="tdaily" data-id="${x.id}" title="Повторять каждый день">🔁</button>
         <button class="del" data-act="tdel" data-id="${x.id}" aria-label="Удалить">✕</button></div>`; }).join('')
     : `<div class="empty"><div class="big">🗒️</div>Добавь первую задачу или выбери из быстрых</div>`}
-    ${tasks.length ? `<div class="muted small" style="margin-top:8px">🔁 — задача будет сама появляться каждый день</div>`:''}
+    ${tasks.length ? `<div class="muted small" style="margin-top:8px">Нажми на задачу — изменить. Удержи и потяни — переставить. 🔁 — повторять каждый день.</div>`:''}
   </div>
   <div class="card"><h3>Как прошёл день?</h3>
     <div class="moods">${MOODS.map((m,i)=>`<button class="${day.mood===i?'on':''}" data-act="mood" data-i="${i}">${m}</button>`).join('')}</div>
@@ -631,7 +646,7 @@ function daySummary(date){
   if (day && (day.tasks.length || day.mood!=null || day.water)) {
     const done = day.tasks.filter(x=>x.done).length;
     h += `<div class="card sec-day"><h3>📝 Задачи <span class="muted small" style="margin-left:auto">${done}/${day.tasks.length} ${day.mood!=null?MOODS[day.mood]:''}</span></h3>
-      ${sortedTasks(day.tasks).map(x=>`<div class="task ${x.done?'done':''}"><span>${x.done?'✅':'⬜️'}</span>${x.time?`<span class="time">${x.time}</span>`:''}<span class="t">${esc(x.text)}</span></div>`).join('')}
+      ${day.tasks.map(x=>`<div class="task ${x.done?'done':''}"><span>${x.done?'✅':'⬜️'}</span>${x.time?`<span class="time">${x.time}</span>`:''}<span class="t">${esc(x.text)}</span></div>`).join('')}
       ${day.water?`<div class="muted small" style="margin-top:6px">💧 Вода: ${day.water} стак.</div>`:''}
       <button class="link" style="margin-top:8px" data-act="calopen" data-s="day" data-d="${date}">Открыть день ›</button></div>`;
   }
@@ -743,6 +758,9 @@ const ACT = {
     if (!S.taskLib[k]) libTouch(t.text, V.day, t.time);
     S.taskLib[k].daily = !S.taskLib[k].daily; if (t.time) S.taskLib[k].time = t.time;
     toast(S.taskLib[k].daily ? 'Будет появляться каждый день' : 'Больше не повторяется'); },
+  tedit(el){ if (DRAGGED) { DRAGGED = false; return false; } V.edit = el.dataset.id; },
+  tclose(el, e){ if (e.target !== el && el.classList.contains('sheet-bg')) return false; V.edit = null; },
+  tdel2(el){ const d = getDay(V.day); d.tasks = d.tasks.filter(x=>x.id!==el.dataset.id); V.edit = null; },
   libadd(el){ const x = S.taskLib[el.dataset.k]; getDay(V.day, true).tasks.push({id:uid(), text:x.text, time:x.time||'', done:false}); libTouch(x.text, V.day); },
   libdel(el){ delete S.taskLib[el.dataset.k]; },
   editlib(){ V.editLib = !V.editLib; },
@@ -817,6 +835,14 @@ document.addEventListener('submit', e => {
     getDay(V.day, true).tasks.push({id:uid(), text, time:fd.time||'', done:false}); libTouch(text, V.day, fd.time);
     V.focus = '#taskIn';
   }
+  if (f.dataset.form === 'tedit') {
+    const t = findTask(f.dataset.id), text = fd.text.trim(); if (!t || !text) return;
+    const ok = t.text.toLowerCase(), nk = text.toLowerCase(), old = S.taskLib[ok];
+    t.text = text; t.time = fd.time || '';
+    if (old && ok !== nk) { delete S.taskLib[ok]; S.taskLib[nk] = Object.assign(old, {text}); }
+    if (S.taskLib[nk]) { S.taskLib[nk].text = text; if (S.taskLib[nk].daily) S.taskLib[nk].time = t.time; }
+    V.edit = null;
+  }
   if (f.dataset.form === 'ex') {
     const name = fd.name.trim(); if (!name) return;
     const k = name.toLowerCase(), lib = S.exLib[k];
@@ -850,6 +876,50 @@ document.addEventListener('change', e => {
       if (!d.days || !d.settings) throw 0; S = Object.assign(fresh(), d); save(); toast('Данные загружены'); render(); }
     catch(_) { toast('Это не файл «Моего дня»'); } }); }
 });
+/* ---------- перетаскивание задач: удержать и потянуть ---------- */
+let DRAGGED = false, DR = null;
+function dragStart(row, y0){
+  const list = row.parentElement, rows = [...list.querySelectorAll('.task[data-tid]')];
+  DR = {row, list, rows, from: rows.indexOf(row), to: rows.indexOf(row), h: row.offsetHeight, y0, s0: scrollY, y: y0, iv: null};
+  list.classList.add('dragging'); row.classList.add('drag');
+  try { navigator.vibrate && navigator.vibrate(15); } catch(_){}
+  DR.iv = setInterval(() => { if (!DR) return;
+    const m = 90, vh = innerHeight; if (DR.y < m) scrollBy(0, -14); else if (DR.y > vh - m - 70) scrollBy(0, 14); dragUpdate(); }, 16);
+}
+function dragUpdate(){
+  const d = DR; if (!d) return;
+  const dy = (d.y + scrollY) - (d.y0 + d.s0);
+  d.row.style.transform = `translateY(${dy}px)`;
+  const n = d.rows.length, to = Math.max(0, Math.min(n-1, d.from + Math.round(dy / d.h)));
+  d.to = to;
+  d.rows.forEach((r, i) => { if (r === d.row) return;
+    r.style.transform = (d.from < i && i <= to) ? `translateY(${-d.h}px)` : (to <= i && i < d.from) ? `translateY(${d.h}px)` : ''; });
+}
+function dragEnd(){
+  const d = DR; if (!d) return; DR = null; clearInterval(d.iv);
+  const day = getDay(V.day); const [t] = day.tasks.splice(d.from, 1); day.tasks.splice(d.to, 0, t);
+  DRAGGED = true; setTimeout(() => DRAGGED = false, 400);
+  save(); render();
+}
+let HOLD = null;
+document.addEventListener('pointerdown', e => {
+  const row = e.target.closest('.task[data-tid]');
+  if (!row || e.target.closest('button,input,a') || screen() !== 'day' || e.button > 0) return;
+  const x = e.clientX, y = e.clientY;
+  clearTimeout(HOLD && HOLD.t);
+  HOLD = {x, y, id: e.pointerId, t: setTimeout(() => { if (HOLD) { HOLD.on = true; dragStart(row, HOLD.y); } }, 380)};
+});
+document.addEventListener('pointermove', e => {
+  if (!HOLD || e.pointerId !== HOLD.id) return;
+  if (DR) { DR.y = e.clientY; dragUpdate(); return; }
+  if (Math.hypot(e.clientX-HOLD.x, e.clientY-HOLD.y) > 8) { clearTimeout(HOLD.t); HOLD = null; }
+});
+const endHold = e => { if (!HOLD) return; clearTimeout(HOLD.t); const was = HOLD.on; HOLD = null;
+  if (was && DR) { if (e.type==='pointercancel' && !DR) return; dragEnd(); } };
+document.addEventListener('pointerup', endHold);
+document.addEventListener('pointercancel', endHold);
+document.addEventListener('touchmove', e => { if (DR) e.preventDefault(); }, {passive:false});
+document.addEventListener('contextmenu', e => { if (e.target.closest('.task')) e.preventDefault(); });
 window.addEventListener('hashchange', () => { scrollTo(0,0); render(); });
 render();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');

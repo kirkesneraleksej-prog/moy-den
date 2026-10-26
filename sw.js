@@ -1,5 +1,5 @@
 // сначала сеть, при отсутствии интернета — кэш
-const C = 'moy-den-v1';
+const C = 'moy-den-v2';
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(['./', 'index.html', 'manifest.json', 'icon-192.png']))); });
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
